@@ -6,6 +6,8 @@
  * Change Logs:
  * Date           Author       Notes
  * 2018-12-5      SummerGift   first version
+ * 2019-3-2       jinsheng     add Macro judgment
+ * 2020-1-6       duminmin     support single bank mode
  */
 
 #include "board.h"
@@ -21,7 +23,6 @@
 //#define DRV_DEBUG
 #define LOG_TAG                "drv.flash"
 #include <drv_log.h>
-
 #define ADDR_FLASH_SECTOR_0     ((rt_uint32_t)0x08000000) /* Base address of Sector 0, 32 Kbytes */
 #define ADDR_FLASH_SECTOR_1     ((rt_uint32_t)0x08008000) /* Base address of Sector 1, 32 Kbytes */
 #define ADDR_FLASH_SECTOR_2     ((rt_uint32_t)0x08010000) /* Base address of Sector 2, 32 Kbytes */
@@ -34,7 +35,6 @@
 #define ADDR_FLASH_SECTOR_9     ((rt_uint32_t)0x08140000) /* Base address of Sector 9, 256 Kbytes */
 #define ADDR_FLASH_SECTOR_10    ((rt_uint32_t)0x08180000) /* Base address of Sector 10, 256 Kbytes */
 #define ADDR_FLASH_SECTOR_11    ((rt_uint32_t)0x081C0000) /* Base address of Sector 11, 256 Kbytes */
-
 /**
   * @brief  Gets the sector of a given address
   * @param  None
@@ -42,8 +42,73 @@
   */
 static rt_uint32_t GetSector(rt_uint32_t Address)
 {
-    rt_uint32_t sector = 0;
+    uint32_t sector = 0;
+  
+#if defined (FLASH_OPTCR_nDBANK)
+    FLASH_OBProgramInitTypeDef OBInit;
+    uint32_t nbank = 0;
 
+    //get duel bank ability:nDBANK(Bit29)
+    HAL_FLASHEx_OBGetConfig(&OBInit);
+    nbank = ((OBInit.USERConfig & 0x20000000U) >> 29);
+    //1:single bank mode
+    if (1 == nbank)
+    {  
+        if ((Address < ADDR_FLASH_SECTOR_1) && (Address >= ADDR_FLASH_SECTOR_0))
+        {
+            sector = FLASH_SECTOR_0;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_2) && (Address >= ADDR_FLASH_SECTOR_1))
+        {
+            sector = FLASH_SECTOR_1;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_3) && (Address >= ADDR_FLASH_SECTOR_2))
+        {
+            sector = FLASH_SECTOR_2;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_4) && (Address >= ADDR_FLASH_SECTOR_3))
+        {
+            sector = FLASH_SECTOR_3;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_5) && (Address >= ADDR_FLASH_SECTOR_4))
+        {
+            sector = FLASH_SECTOR_4;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_6) && (Address >= ADDR_FLASH_SECTOR_5))
+        {
+            sector = FLASH_SECTOR_5;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_7) && (Address >= ADDR_FLASH_SECTOR_6))
+        {
+            sector = FLASH_SECTOR_6;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_8) && (Address >= ADDR_FLASH_SECTOR_7))
+        {
+            sector = FLASH_SECTOR_7;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_9) && (Address >= ADDR_FLASH_SECTOR_8))
+        {
+            sector = FLASH_SECTOR_8;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_10) && (Address >= ADDR_FLASH_SECTOR_9))
+        {
+            sector = FLASH_SECTOR_9;
+        }
+        else if ((Address < ADDR_FLASH_SECTOR_11) && (Address >= ADDR_FLASH_SECTOR_10))
+        {
+            sector = FLASH_SECTOR_10;
+        }
+        else 
+        {
+            sector = FLASH_SECTOR_11;
+        }
+    }
+    else  //0:dual bank mode
+    {
+        LOG_E("rtthread doesn't support duel bank mode yet!");
+        RT_ASSERT(0);
+    }
+#else //no dual bank ability
     if ((Address < ADDR_FLASH_SECTOR_1) && (Address >= ADDR_FLASH_SECTOR_0))
     {
         sector = FLASH_SECTOR_0;
@@ -88,12 +153,14 @@ static rt_uint32_t GetSector(rt_uint32_t Address)
     {
         sector = FLASH_SECTOR_10;
     }
-    else /* (Address < FLASH_END_ADDR) && (Address >= ADDR_FLASH_SECTOR_11) */
+    else 
     {
         sector = FLASH_SECTOR_11;
     }
+#endif
     return sector;
 }
+
 
 /**
  * Read data from flash.
@@ -236,10 +303,17 @@ __exit:
     }
 
     LOG_D("erase done: addr (0x%p), size %d", (void *)addr, size);
-    return result;
+    return size;
 }
 
 #if defined(PKG_USING_FAL)
+#define FLASH_SIZE_GRANULARITY_32K      (4 * 32 * 1024)
+#define FLASH_SIZE_GRANULARITY_128K     (128 * 1024)
+#define FLASH_SIZE_GRANULARITY_256K     (7 * 256 *1024)
+
+#define STM32_FLASH_START_ADRESS_32K    (STM32_FLASH_START_ADRESS)
+#define STM32_FLASH_START_ADRESS_128K   (STM32_FLASH_START_ADRESS_32K + FLASH_SIZE_GRANULARITY_32K)
+#define STM32_FLASH_START_ADRESS_256K   (STM32_FLASH_START_ADRESS_128K + FLASH_SIZE_GRANULARITY_128K)
 
 static int fal_flash_read_32k(long offset, rt_uint8_t *buf, size_t size);
 static int fal_flash_read_128k(long offset, rt_uint8_t *buf, size_t size);
